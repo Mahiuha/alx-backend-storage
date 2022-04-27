@@ -1,35 +1,46 @@
 #!/usr/bin/env python3
-""" Module for Implementing an expiring web cache and tracker """
+"""Get a page and count times accessed"""
 
+
+import requests
 from functools import wraps
 import redis
-import requests
-from typing import Callable
-
-client = redis.Redis()
+from typing import Union, Callable
 
 
-def count_requests(method: Callable) -> Callable:
-    """ Decortator to count how many request has been made"""
+red = redis.Redis()
+red.flushdb()
 
+
+def my_cache(method: Callable) -> Callable:
+    """G e t  a  p a g e  a n d  c o u n t  t i m e s  a c c e s s e d"""
     @wraps(method)
-    def wrapper(url):
-        """ Function wrapper """
-        client.incr(f"count:{url}")
-        cached_html = client.get(f"cached:{url}")
-        if cached_html:
-            return cached_html.decode('utf-8')
+    def wrap(*args, **kwargs):
+        """G e t  a  p a g e  a n d  c o u n t  t i m e s  a c c e s s e d"""
+        url = args[0]
+        text = red.get(url)
+        if text is None:
+            text = method(*args, **kwargs)
+            if text is not None:
+                red.setex(url, 10, text)
+                red.incr("count:"+url)
+        else:
+            text = text
+            red.incr("count:"+url)
+        return text
+    return wrap
 
-        html = method(url)
-        client.setex(f"cached:{url}", 10, html)
-        return html
 
-    return wrapper
+@my_cache
+def get_url(url: str) -> bytes:
+    """G e t  a  p a g e  a n d  c o u n t  t i m e s  a c c e s s e d"""
+    try:
+        text = requests.get(url).content
+        return text
+    except Exception:
+        return None
 
 
-@count_requests
 def get_page(url: str) -> str:
-    """Gets the html content of a web page
-    """
-    req = requests.get(url)
-    return req.text
+    """G e t  a  p a g e  a n d  c o u n t  t i m e s  a c c e s s e d"""
+    return get_url(url)
